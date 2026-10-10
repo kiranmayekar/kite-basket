@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Momentum Basket</title>
+<style>
+  :root { --bg:#fafaf8; --ink:#1d1d1b; --muted:#6b6b66; --line:#e2e1dc; --buy:#1f7a4d; --sell:#b3361f; --btn:#1d1d1b; --btnink:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --ink:#ecebe6; --muted:#9a9993; --line:#2c2c2a; --buy:#5cc28f; --sell:#ef7d66; --btn:#ecebe6; --btnink:#161615; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 -apple-system, system-ui, sans-serif; }
+  main { max-width:520px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { margin:6px 0; color:var(--muted); font-size:14px; }
+  table { width:100%; border-collapse:collapse; margin:16px 0; }
+  td { padding:9px 4px; border-bottom:1px solid var(--line); }
+  td.q { text-align:right; font-variant-numeric:tabular-nums; }
+  .BUY { color:var(--buy); font-weight:600; } .SELL { color:var(--sell); font-weight:600; }
+  button { width:100%; padding:14px; font-size:17px; border:0; border-radius:10px; background:var(--btn); color:var(--btnink); }
+  .msg { padding:12px; border:1px solid var(--line); border-radius:10px; margin:12px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Momentum basket</h1>
+  <div id="app"><p>Loading…</p></div>
+</main>
+<script>
+// Orders arrive in the URL fragment (never sent to the server hosting this page):
+//   #k=<kite api key>&v=amo|regular&t=<label>&o=<base64url JSON [["B"|"S", "SYMBOL", qty], ...]>
+// Nothing is submitted until you tap the button; Kite then shows its own basket screen where you can still edit or cancel.
+const app = document.getElementById("app");
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const q = new URLSearchParams(location.search);
+if (q.get("status")) {                                   // Kite redirects back here after the basket
+  const ok = q.get("status") === "success";
+  app.innerHTML = `<div class="msg">${ok ? "✅ Basket sent to Kite." : "Basket status: " + esc(q.get("status"))}</div>
+    <p>Check Kite → Orders for fills or rejections.</p>`;
+} else {
+  try {
+    const f = new URLSearchParams(location.hash.slice(1));
+    const key = f.get("k"), variety = f.get("v") === "amo" ? "amo" : "regular", label = f.get("t") || "";
+    const b64 = f.get("o").replace(/-/g, "+").replace(/_/g, "/");
+    const rows = JSON.parse(atob(b64 + "===".slice((b64.length + 3) % 4)));
+    if (!/^[a-z0-9]+$/i.test(key) || !rows.length) throw new Error("bad link");
+    const orders = rows.map(([s, sym, qty]) => ({
+      variety, exchange: "NSE", tradingsymbol: String(sym), transaction_type: s === "S" ? "SELL" : "BUY",
+      order_type: "MARKET", product: "CNC", quantity: Math.max(1, Math.floor(qty)), tag: "momentum" }));
+    app.innerHTML = `<p>${esc(label)} · ${variety === "amo" ? "After-market order (AMO)" : "Regular market orders"} · CNC (delivery)</p>
+      <table>${orders.map(o => `<tr><td class="${o.transaction_type}">${o.transaction_type}</td>
+        <td>${esc(o.tradingsymbol)}</td><td class="q">${o.quantity}</td></tr>`).join("")}</table>
+      <form method="post" action="https://kite.zerodha.com/connect/basket">
+        <input type="hidden" name="api_key" value="${esc(key)}">
+        <input type="hidden" name="data" value="${esc(JSON.stringify(orders))}">
+        <button type="submit">Review in Kite →</button>
+      </form>
+      <p>Kite shows the basket again; quantities can still be edited there. Nothing is placed until you confirm in Kite.</p>`;
+  } catch (e) {
+    app.innerHTML = `<div class="msg">This link has no valid orders.</div>`;
+  }
+}
+</script>
+</body>
+</html>
