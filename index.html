@@ -27,7 +27,8 @@
 </main>
 <script>
 // Orders arrive in the URL fragment (never sent to the server hosting this page):
-//   #k=<kite api key>&v=amo|regular&t=<label>&o=<base64url JSON [["B"|"S", "SYMBOL", qty], ...]>
+//   #k=<kite api key>&v=amo|regular&t=<label>&o=<base64url JSON [["B"|"S", "SYMBOL", qty, limit price?], ...]>
+// With a price the order is a LIMIT order (market orders on some ETFs / API routes need market protection); without, MARKET.
 // Nothing is submitted until you tap the button; Kite then shows its own basket screen where you can still edit or cancel.
 const app = document.getElementById("app");
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -43,12 +44,14 @@ if (q.get("status")) {                                   // Kite redirects back 
     const b64 = f.get("o").replace(/-/g, "+").replace(/_/g, "/");
     const rows = JSON.parse(atob(b64 + "===".slice((b64.length + 3) % 4)));
     if (!/^[a-z0-9]+$/i.test(key) || !rows.length) throw new Error("bad link");
-    const orders = rows.map(([s, sym, qty]) => ({
+    const orders = rows.map(([s, sym, qty, px]) => Object.assign({
       variety, exchange: "NSE", tradingsymbol: String(sym), transaction_type: s === "S" ? "SELL" : "BUY",
-      order_type: "MARKET", product: "CNC", quantity: Math.max(1, Math.floor(qty)), tag: "momentum" }));
-    app.innerHTML = `<p>${esc(label)} · ${variety === "amo" ? "After-market order (AMO)" : "Regular market orders"} · CNC (delivery)</p>
+      order_type: px > 0 ? "LIMIT" : "MARKET", product: "CNC", quantity: Math.max(1, Math.floor(qty)), tag: "momentum" },
+      px > 0 ? { price: Number(px) } : {}));
+    app.innerHTML = `<p>${esc(label)} · ${variety === "amo" ? "After-market order (AMO)" : "Regular order"} · CNC (delivery) · limit = last close ± 3% (fills at market if within)</p>
       <table>${orders.map(o => `<tr><td class="${o.transaction_type}">${o.transaction_type}</td>
-        <td>${esc(o.tradingsymbol)}</td><td class="q">${o.quantity}</td></tr>`).join("")}</table>
+        <td>${esc(o.tradingsymbol)}</td><td class="q">${o.quantity}</td>
+        <td class="q">${o.price ? "₹" + o.price : "market"}</td></tr>`).join("")}</table>
       <form method="post" action="https://kite.zerodha.com/connect/basket">
         <input type="hidden" name="api_key" value="${esc(key)}">
         <input type="hidden" name="data" value="${esc(JSON.stringify(orders))}">
